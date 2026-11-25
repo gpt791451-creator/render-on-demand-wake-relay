@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -259,4 +260,99 @@ test("OAuth authorization page describes Cloudflare MCP and not the retired Rend
   assert.match(page, /Authorize Cloudflare MCP/);
   assert.match(page, /read-only cron-job\.org tools/);
   assert.doesNotMatch(page, /Render|wake your Render service/i);
+});
+
+
+test("OAuth authorization code PKCE, refresh token, and authenticated ping work end to end", async () => {
+  const worker = loadWorker();
+  const relayPassword = "TEST_ONLY_RELAY_ACCESS_TOKEN_0123456789";
+  const env = {
+    RELAY_ACCESS_TOKEN: relayPassword,
+    CRON_JOB_ORG_API_KEY: "TEST_ONLY_CRON_API_KEY"
+  };
+  const clientId = "smoke-oauth-client";
+  const redirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+  const verifier = "smoke-verifier-value-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const authorizeForm = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state: "smoke-state",
+    scope: "wake",
+    resource: origin,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    password: relayPassword
+  });
+  const authorizeResponse = await request(worker, "/oauth/authorize", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: authorizeForm.toString(),
+    env
+  });
+  assert.equal(authorizeResponse.status, 200);
+  const successPage = await authorizeResponse.text();
+  assert.match(successPage, /Cloudflare MCP access has been approved/);
+  const callbackHref = successPage.match(/href="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
+  assert.ok(callbackHref, "OAuth success page must provide a ChatGPT callback link");
+  const code = new URL(callbackHref).searchParams.get("code");
+  assert.ok(code, "OAuth callback must include an authorization code");
+
+  const tokenForm = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    code,
+    code_verifier: verifier,
+    resource: origin
+  });
+  const tokenResponse = await request(worker, "/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: tokenForm.toString(),
+    env
+  });
+  assert.equal(tokenResponse.status, 200);
+  const tokens = await tokenResponse.json();
+  assert.equal(tokens.token_type, "Bearer");
+  assert.equal(tokens.scope, "wake");
+  assert.ok(tokens.access_token);
+  assert.ok(tokens.refresh_token);
+
+  const refreshForm = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: clientId,
+    refresh_token: tokens.refresh_token,
+    resource: origin
+  });
+  const refreshResponse = await request(worker, "/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: refreshForm.toString(),
+    env
+  });
+  assert.equal(refreshResponse.status, 200);
+  const refreshed = await refreshResponse.json();
+  assert.ok(refreshed.access_token);
+  assert.ok(refreshed.refresh_token);
+
+  const pingResponse = await request(worker, "/mcp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + refreshed.access_token
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 99,
+      method: "tools/call",
+      params: { name: "ping", arguments: {} }
+    }),
+    env
+  });
+  assert.equal(pingResponse.status, 200);
+  const pingBody = await pingResponse.json();
+  assert.equal(pingBody.result.structuredContent.status, "ok");
+  assert.equal(pingBody.result.structuredContent.cronApiConfigured, true);
 });
