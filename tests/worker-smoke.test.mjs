@@ -131,7 +131,7 @@ test("cron inspection tools use only fixed-host GET requests", async () => {
   const calls = [
     ["cron_list_jobs", {}],
     ["cron_get_job", { job_id: 42 }],
-    ["cron_get_history", { job_id: 42, limit: 5 }]
+    ["cron_get_history", { job_id: 42 }]
   ];
   for (let i = 0; i < calls.length; i++) {
     const response = await rpc(worker, {
