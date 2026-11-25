@@ -199,3 +199,64 @@ test("unknown paths return 404", async () => {
   const response = await request(worker, "/not-a-route");
   assert.equal(response.status, 404);
 });
+
+
+test("OAuth discovery metadata advertises the protected resource and authorization server", async () => {
+  const worker = loadWorker();
+  const resourceResponse = await request(worker, "/.well-known/oauth-protected-resource");
+  assert.equal(resourceResponse.status, 200);
+  const resource = await resourceResponse.json();
+  assert.equal(resource.resource, origin);
+  assert.deepEqual(resource.authorization_servers, [origin]);
+  const serverResponse = await request(worker, "/.well-known/oauth-authorization-server");
+  assert.equal(serverResponse.status, 200);
+  const server = await serverResponse.json();
+  assert.equal(server.issuer, origin);
+  assert.equal(server.authorization_endpoint, origin + "/oauth/authorize");
+  assert.equal(server.token_endpoint, origin + "/oauth/token");
+  assert.deepEqual(server.code_challenge_methods_supported, ["S256"]);
+});
+
+test("OAuth dynamic registration accepts only official ChatGPT callback URLs", async () => {
+  const worker = loadWorker();
+  const rejected = await request(worker, "/oauth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect_uris: ["https://attacker.example/callback"] })
+  });
+  assert.equal(rejected.status, 400);
+  const rejectedBody = await rejected.json();
+  assert.equal(rejectedBody.error, "invalid_redirect_uri");
+
+  const accepted = await request(worker, "/oauth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_name: "ChatGPT smoke test",
+      redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"]
+    })
+  });
+  assert.equal(accepted.status, 201);
+  const acceptedBody = await accepted.json();
+  assert.match(acceptedBody.client_id, /^wake-/);
+  assert.deepEqual(acceptedBody.redirect_uris, ["https://chatgpt.com/connector_platform_oauth_redirect"]);
+});
+
+test("OAuth authorization page describes Cloudflare MCP and not the retired Render wake flow", async () => {
+  const worker = loadWorker();
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: "smoke-client",
+    redirect_uri: "https://chatgpt.com/connector_platform_oauth_redirect",
+    code_challenge: "A".repeat(43),
+    code_challenge_method: "S256",
+    scope: "wake",
+    resource: origin
+  });
+  const response = await request(worker, "/oauth/authorize?" + params.toString());
+  assert.equal(response.status, 200);
+  const page = await response.text();
+  assert.match(page, /Authorize Cloudflare MCP/);
+  assert.match(page, /read-only cron-job\.org tools/);
+  assert.doesNotMatch(page, /Render|wake your Render service/i);
+});
