@@ -10,7 +10,7 @@ const source = readFileSync(resolve(here, "../src/index.js"), "utf8");
 function loadWorker({ authorize = false, fetchImpl = async () => {
   throw new Error("Unexpected outbound fetch in this test");
 } } = {}) {
-  let code = source.replace(/^export default\s*\{/, "return {");
+  let code = source.replace(/export default\s*\{/, "return {");
   assert.notEqual(code, source, "Worker module export must be found");
   if (authorize) {
     code = code.replace(
