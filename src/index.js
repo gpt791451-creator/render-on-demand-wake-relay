@@ -332,52 +332,6 @@ async function callCronTool(name, args, env) {
   throw new Error("UNKNOWN_TOOL");
 }
 
-async function wakeRender(env) {
-  const base = (env.RENDER_HEALTH_URL || "").trim();
-  if (!/^https:\/\/render-cron-mcp-poc\.onrender\.com\/health\/?$/.test(base)) {
-    throw new Error("Render health URL is not the approved service endpoint.");
-  }
-  // Render Free cold starts can exceed the former 55-second window.
-  // Keep polling bounded, with per-request timeouts and backoff.
-  const started = Date.now();
-  const deadline = started + 180000;
-  let last = "NO_RESPONSE";
-  let attempt = 0;
-  while (Date.now() < deadline) {
-    attempt++;
-    try {
-      const response = await fetch(base, {
-        method: "GET",
-        headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
-      });
-      if (response.ok) {
-        // The request targets the dedicated /health endpoint. A successful
-        // HTTP response is sufficient for wake readiness; the separate MCP
-        // ping is the authoritative tunnel check.
-        try { await response.body?.cancel(); } catch {}
-        return {
-          status: "ready",
-          service: "render-cron-mcp-poc",
-          healthHttpStatus: response.status,
-          attempts: attempt,
-          elapsedMs: Date.now() - started,
-          checkedAt: new Date().toISOString(),
-          nextStep: "Health endpoint is responding. Call the separate Render Cron MCP ping to verify tunnel connectivity."
-        };
-      } else {
-        last = "UPSTREAM_HTTP_" + response.status;
-        try { await response.body?.cancel(); } catch {}
-      }
-    } catch (error) {
-      last = error && error.name === "TimeoutError" ? "UPSTREAM_TIMEOUT" : "UPSTREAM_NETWORK_ERROR";
-    }
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    const delay = Math.min(8000, 2000 + attempt * 1000, remaining);
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-  throw new Error("Render not ready after 180 seconds; diagnostic=" + last + "; attempts=" + attempt + ". Retry once later; do not expose upstream details.");
-}
 async function handleRpc(request, env, url) {
   let body;
   try { body = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
@@ -388,17 +342,13 @@ async function handleRpc(request, env, url) {
     return json({ jsonrpc: "2.0", id, result: {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      serverInfo: { name: "cloudflare-cron-job-org-mcp", version: "1.2.0" },
-      instructions: "This Cloudflare-hosted MCP server provides read-only access to cron-job.org jobs and execution history. Use ping to check configuration, cron_list_jobs to list jobs, cron_get_job for job details, and cron_get_history for execution history. It does not create, update, enable, disable, delete, or manually trigger jobs. The legacy wake_render tool remains available only for compatibility."
+      serverInfo: { name: "cloudflare-cron-job-org-mcp", version: "1.3.0" },
+      instructions: "This Cloudflare-hosted MCP server provides read-only access to cron-job.org jobs and execution history. Use ping to check configuration, cron_list_jobs to list jobs, cron_get_job for job details, and cron_get_history for execution history. It does not create, update, enable, disable, delete, or manually trigger jobs. The Worker has no Render dependency and no scheduled keep-alive task."
     }});
   }
   if (body.method === "ping") return json({ jsonrpc: "2.0", id, result: {} });
   if (body.method === "tools/list") {
-    return json({ jsonrpc: "2.0", id, result: { tools: [...cronTools(), {
-      name: "wake_render",
-      description: "Legacy compatibility tool only: attempt to wake the old Render Free service. The new cron-job.org tools do not depend on Render.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
+    return json({ jsonrpc: "2.0", id, result: { tools: [...cronTools()
     }]}});
   }
   if (body.method === "tools/call") {
@@ -413,9 +363,7 @@ async function handleRpc(request, env, url) {
     const params = body.params || {};
     const name = params.name;
     try {
-      const result = name === "wake_render"
-        ? await wakeRender(env)
-        : await callCronTool(name, params.arguments || {}, env);
+      const result = await callCronTool(name, params.arguments || {}, env);
       return json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: false }});
     } catch (error) {
       const message = String(error?.message || "TOOL_FAILED");
@@ -435,7 +383,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request) });
-    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "render-on-demand-wake-relay", version: "1.2.0", features: ["cron_list_jobs", "cron_get_job", "cron_get_history", "ping", "legacy_wake_render"] }, 200, corsHeaders(request));
+    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "render-on-demand-wake-relay", version: "1.2.0", features: ["cron_list_jobs", "cron_get_job", "cron_get_history", "ping"] }, 200, corsHeaders(request));
     if (url.pathname === "/.well-known/oauth-protected-resource" && request.method === "GET") return json(resourceMetadata(url.origin), 200, corsHeaders(request));
     if (url.pathname === "/.well-known/oauth-authorization-server" && request.method === "GET") return json(oauthMetadata(url.origin), 200, corsHeaders(request));
     if (url.pathname === "/oauth/register") return request.method === "POST" ? handleRegister(request) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
