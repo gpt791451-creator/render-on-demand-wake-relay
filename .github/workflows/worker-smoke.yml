@@ -1,0 +1,31 @@
+name: Cloudflare Worker migration smoke tests
+
+on:
+  push:
+    branches: [cloudflare-native-migration]
+    paths:
+      - "src/index.js"
+      - "tests/**"
+      - ".github/workflows/worker-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/index.js"
+      - "tests/**"
+      - ".github/workflows/worker-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run Worker runtime smoke tests
+        run: node --test tests/worker-smoke.test.mjs
