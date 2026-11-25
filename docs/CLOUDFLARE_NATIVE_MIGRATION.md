@@ -74,3 +74,34 @@ Keep the current production `main` deployment and Render service untouched until
 ## Known verification limitation
 
 The source repositories can establish intended behavior, but they cannot establish the current contents of the live cron-job.org account or prove the live Worker is serving the latest commit. The existing Worker source has a protected `cron_list_jobs` MCP tool, but this session has not yet obtained an authenticated live call. Do not mark these checks as passed until evidence is collected.
+
+
+## Progress update (2026-11-26)
+
+### Branch-local runtime smoke checks
+
+A local V8/Fetch-compatible harness exercised the migration branch source without deploying it:
+
+- JavaScript parse: PASS.
+- `GET /health`: HTTP 200, version 1.3.0, retained feature list only.
+- MCP `initialize`: HTTP 200, protocol version `2025-06-18`.
+- MCP `tools/list`: HTTP 200; exactly `ping`, `cron_list_jobs`, `cron_get_job`, `cron_get_history`.
+- Unauthenticated MCP `tools/call`: HTTP 401 / OAuth-required JSON-RPC error.
+- Source inspection: no `wake_render`, `wakeRender()`, `RENDER_HEALTH_URL`, or Render health URL remains in the Worker source.
+
+These are branch-local handler smoke checks with a compatibility harness, not a Cloudflare deployment, real OAuth exchange, upstream cron API call, or ChatGPT connector E2E test.
+
+A Node 22 GitHub Actions smoke-test workflow and seven tests were added to this branch. The GitHub Actions runs endpoint currently reports zero runs for the branch, so CI has not yet supplied an independent pass/fail result.
+
+### Live Render/cron inventory attempt
+
+- Render connector confirms the legacy service still exists as a Free web service and is `not_suspended`.
+- Latest visible live deploy is `dep-dc3ahgjrjlhs73fau06g`, status `live`, started 2026-11-25T09:22:10Z, finished 2026-11-25T09:23:03Z, deployed commit `ce816d7a6edfcc5493f005a90e1e6269f3a77baa`.
+- The existing Render Cron MCP connector still fails with: tunnel-client has not been seen for 300 seconds.
+- The existing Cloudflare wake relay attempt returned after 180 seconds with upstream HTTP 502 (25 attempts); no successful wake was observed.
+- Render request-log queries for `/health` and `/mcp` returned no matching entries in the queried period. This is not proof of the cron-job.org account inventory.
+- Therefore the live cron-job.org job list and history remain unavailable. No cron job was changed or deleted, and no secret was read or exposed.
+
+### Next safe action
+
+Do not restart/redeploy the legacy Render service or delete any cron-job.org job merely to obtain the inventory. Continue the Cloudflare branch work and seek an authenticated, non-secret-exposing path to inspect the account. Production cutover remains blocked on live Worker/OAuth/connector verification and the actual cron job inventory.
