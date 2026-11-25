@@ -135,3 +135,23 @@ The test harness was corrected to locate the export anywhere in the source using
 The already-open PR #1 contains a Cloudflare Workers & Pages bot comment for an earlier Preview build at commit `63b8e23`; that build is marked Failed and no Preview URL was produced. The comment links to the Cloudflare dashboard build record `2dc10dec-5bf2-44f5-abfc-b4f38ae9c81a`. The current GitHub connector can read the PR comment but cannot read the Cloudflare dashboard build logs. A direct Web open of the Cloudflare dashboard record and the deployed Worker's `/health` endpoint are not accessible from this session (DisabledError). A SAFE Shell `curl` request was also rejected by the host's SAFE allowlist; Full Shell was not enabled.
 
 Cloudflare's current documentation says production-branch pushes create production builds, while non-production branches create Previews only when Preview Builds are enabled. The existing PR bot comment proves a Preview build was attempted for this branch, not that production was changed. Do not merge PR #1 or alter the production branch until the failed Preview build is diagnosed and the live Worker/OAuth/connector checks pass. The CI repair commit changed only `tests/worker-smoke.test.mjs`; it did not change Worker runtime source.
+
+
+### OAuth user-facing copy and expanded CI coverage (2026-11-26)
+
+A source scan found that the OAuth login and success pages still told users they were authorizing ChatGPT to wake a Render service, even though the Render wake tool had been removed. Updated the page title, heading, explanation, password label, and success text to describe the Cloudflare MCP and its read-only cron-job.org tools. The legacy OAuth scope string `wake` is intentionally retained for compatibility; changing it would risk breaking existing OAuth clients.
+
+Added CI coverage for:
+- OAuth protected-resource and authorization-server discovery metadata.
+- Dynamic client registration accepting only official ChatGPT callback URLs and rejecting an attacker-controlled redirect.
+- The Cloudflare MCP authorization page no longer mentioning the retired Render wake flow.
+- Full isolated OAuth authorization-code + PKCE exchange, refresh-token exchange, and authenticated MCP `ping`, using test-only secrets and no external network call.
+
+Latest source/test commits:
+- OAuth page copy: `21d2c43d1c20856d0228179b7dc1a19948c6833b`
+- OAuth metadata, registration, and login-copy tests: `53fb6a202b084aa1b94197efb5ec14337236d891`
+- Full OAuth PKCE/refresh/authenticated ping test: `81a62f4e1df887d54fd2ed340a3bfe261e8c4d4d`
+
+GitHub Actions run #20 (`45682075767`) completed successfully on Node 22: **13 tests passed, 0 failed**. This validates the Worker handler and OAuth implementation in the isolated Node test harness with test-only secrets. It is not a live Cloudflare Worker execution or ChatGPT connector end-to-end test.
+
+The existing PR #1 is still open and the branch is 19 commits ahead of `main` with no commits behind. The only Cloudflare bot preview comment currently visible through GitHub still reports the earlier preview build for `63b8e23` as failed with no Preview URL; no successful Preview for the latest head has been evidenced. Do not merge until the Cloudflare build failure is diagnosed and live Worker/connector verification is complete.
