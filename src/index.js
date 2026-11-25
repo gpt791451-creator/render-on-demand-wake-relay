@@ -273,20 +273,23 @@ async function wakeRender(env) {
       if (response.ok) {
         let data = null;
         try { data = await response.json(); } catch { last = "INVALID_JSON"; }
-        if (data && data.status === "ok" && data.service === "render-cron-mcp-poc" && data.mcpAccessConfigured === true) {
+        // /health is only the wake/readiness gate. MCP tunnel readiness is
+        // verified separately by the Render Cron MCP ping after this returns.
+        if (data && data.status === "ok" && data.service === "render-cron-mcp-poc") {
           return {
             status: "ready",
             service: data.service,
+            mcpAccessConfigured: data.mcpAccessConfigured === true,
+            cronApiConfigured: data.cronApiConfigured === true,
             attempts: attempt,
             elapsedMs: Date.now() - started,
             checkedAt: new Date().toISOString(),
-            nextStep: "Render health endpoint is responding. Call the separate Render Cron MCP connector to verify tunnel connectivity."
+            nextStep: "Health endpoint is ready. Call the separate Render Cron MCP ping to verify the tunnel."
           };
         }
         if (data) last = "READINESS_PAYLOAD_MISMATCH";
       } else {
         last = "UPSTREAM_HTTP_" + response.status;
-        // Do not read or return upstream response bodies.
         try { await response.body?.cancel(); } catch {}
       }
     } catch (error) {
