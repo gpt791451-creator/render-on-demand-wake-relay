@@ -99,9 +99,26 @@ A Node 22 GitHub Actions smoke-test workflow and nine tests were added to this b
 - Latest visible live deploy is `dep-dc3ahgjrjlhs73fau06g`, status `live`, started 2026-11-25T09:22:10Z, finished 2026-11-25T09:23:03Z, deployed commit `ce816d7a6edfcc5493f005a90e1e6269f3a77baa`.
 - The existing Render Cron MCP connector still fails with: tunnel-client has not been seen for 300 seconds.
 - The existing Cloudflare wake relay attempt returned after 180 seconds with upstream HTTP 502 (25 attempts); no successful wake was observed.
-- Render request-log queries for `/health` and `/mcp` returned no matching entries in the queried period. This is not proof of the cron-job.org account inventory.
+- A later unfiltered Render app-log inspection found one inbound `GET /health` at `2026-11-25T10:31:36Z`; the same instance logged application shutdown at `10:46:36Z`, exactly 15 minutes later. Render's official Free-service documentation says Free web services spin down after 15 minutes without inbound HTTP/WebSocket traffic. This strongly supports idle spin-down as the reason the Render tunnel disappears; the source IP of that one request was not attributed, so it is not proof that cron-job.org was the caller or that its schedule is active.
+- The tunnel-client logs show startup initialization eventually succeeded, then OAuth Protected Resource Metadata discovery failed because the local MCP server returned 404 for both `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-protected-resource`. The log records Harpoon `target_count=0`; this concerns the Harpoon target catalog, not proof that the main MCP channel had zero tools. The Render app uses a static Bearer credential via `MCP_EXTRA_HEADERS`; tunnel-client v0.0.20 documents `MCP_OAUTH_DISCOVERY=disabled` for static-credential MCP servers. This is a candidate Render-side configuration correction only; it has not been applied, and no Render configuration was changed.
+- Render request logs still do not establish the live cron-job.org account inventory or prove that the documented 10-minute keep-alive is enabled.
 - Therefore the live cron-job.org job list and history remain unavailable. No cron job was changed or deleted, and no secret was read or exposed.
 
 ### Next safe action
 
 Do not restart/redeploy the legacy Render service or delete any cron-job.org job merely to obtain the inventory. Continue the Cloudflare branch work and seek an authenticated, non-secret-exposing path to inspect the account. Production cutover remains blocked on live Worker/OAuth/connector verification and the actual cron job inventory.
+
+
+### Additional Render runtime evidence (2026-11-26)
+
+The Render app logs now provide a stronger explanation for the stale tunnel symptom:
+
+- The app received one observed `GET /health` at `2026-11-25T10:31:36Z`.
+- The same instance began shutdown at `2026-11-25T10:46:36Z`, exactly 15 minutes later.
+- Render's official Free-service documentation confirms that a Free web service spins down after 15 minutes without inbound HTTP requests or WebSocket messages: https://render.com/docs/free
+- This timing strongly supports Free-tier idle spin-down as the cause of the lost Render tunnel. The caller of the single observed health request is not identified; this does not establish whether the cron-job.org keep-alive exists or is enabled.
+- Tunnel-client logs show successful MCP initialization after its initial connection-refused retries, but OAuth metadata discovery returns 404 because the static-Bearer MCP app does not publish OAuth Protected Resource Metadata. Harpoon reports `target_count=0`; this is its OAuth-discovered target registry, not the main MCP tool catalogue.
+- OpenAI tunnel-client v0.0.20 documents `MCP_OAUTH_DISCOVERY=disabled` for MCP servers using static credentials, with `MCP_EXTRA_HEADERS` supplying the upstream credential: https://github.com/openai/tunnel-client/blob/master/docs/configuration.md
+- This is a possible correction if the Render tunnel is intentionally retained. It is not being applied because the migration objective is to remove Render from the runtime path, and no Render service configuration change is authorized in this phase.
+
+The next priority remains Cloudflare live verification and a safe way to read the actual cron-job.org inventory. Do not infer that there are no cron jobs from missing logs, and do not delete or disable any job until its live details have been reviewed.
