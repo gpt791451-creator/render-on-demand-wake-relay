@@ -267,8 +267,6 @@ async function wakeRender(env) {
       const response = await fetch(base, {
         method: "GET",
         headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
-        signal: AbortSignal.timeout(20000),
-        redirect: "error"
       });
       if (response.ok) {
         // The request targets the dedicated /health endpoint. A successful
