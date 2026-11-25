@@ -127,6 +127,7 @@ test("cron inspection tools use only fixed-host GET requests", async () => {
   };
   const worker = loadWorker({ authorize: true, fetchImpl: mockFetch });
   const env = { CRON_JOB_ORG_API_KEY: "TEST_ONLY_SECRET" };
+  const outputBodies = [];
   const calls = [
     ["cron_list_jobs", {}],
     ["cron_get_job", { job_id: 42 }],
@@ -141,6 +142,7 @@ test("cron inspection tools use only fixed-host GET requests", async () => {
     }, env);
     assert.equal(response.status, 200);
     const body = await response.json();
+    outputBodies.push(body);
     assert.equal(body.result.isError, false);
   }
   assert.deepEqual(requests.map((r) => r.url), [
@@ -150,7 +152,7 @@ test("cron inspection tools use only fixed-host GET requests", async () => {
   ]);
   assert.equal(requests.every((r) => r.method === "GET"), true);
   assert.equal(requests.every((r) => r.authorization === "Bearer TEST_ONLY_SECRET"), true);
-  assert.equal(JSON.stringify(requests).includes("TEST_ONLY_SECRET"), true);
+  assert.equal(JSON.stringify(outputBodies).includes("TEST_ONLY_SECRET"), false);
 });
 
 test("invalid cron job IDs fail before any upstream request", async () => {
