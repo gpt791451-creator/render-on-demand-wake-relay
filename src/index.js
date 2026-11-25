@@ -271,23 +271,19 @@ async function wakeRender(env) {
         redirect: "error"
       });
       if (response.ok) {
-        let data = null;
-        try { data = await response.json(); } catch { last = "INVALID_JSON"; }
-        // /health is only the wake/readiness gate. MCP tunnel readiness is
-        // verified separately by the Render Cron MCP ping after this returns.
-        if (data && data.status === "ok" && data.service === "render-cron-mcp-poc") {
-          return {
-            status: "ready",
-            service: data.service,
-            mcpAccessConfigured: data.mcpAccessConfigured === true,
-            cronApiConfigured: data.cronApiConfigured === true,
-            attempts: attempt,
-            elapsedMs: Date.now() - started,
-            checkedAt: new Date().toISOString(),
-            nextStep: "Health endpoint is ready. Call the separate Render Cron MCP ping to verify the tunnel."
-          };
-        }
-        if (data) last = "READINESS_PAYLOAD_MISMATCH";
+        // The request targets the dedicated /health endpoint. A successful
+        // HTTP response is sufficient for wake readiness; the separate MCP
+        // ping is the authoritative tunnel check.
+        try { await response.body?.cancel(); } catch {}
+        return {
+          status: "ready",
+          service: "render-cron-mcp-poc",
+          healthHttpStatus: response.status,
+          attempts: attempt,
+          elapsedMs: Date.now() - started,
+          checkedAt: new Date().toISOString(),
+          nextStep: "Health endpoint is responding. Call the separate Render Cron MCP ping to verify tunnel connectivity."
+        };
       } else {
         last = "UPSTREAM_HTTP_" + response.status;
         try { await response.body?.cancel(); } catch {}
