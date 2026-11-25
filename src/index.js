@@ -348,8 +348,7 @@ async function handleRpc(request, env, url) {
   }
   if (body.method === "ping") return json({ jsonrpc: "2.0", id, result: {} });
   if (body.method === "tools/list") {
-    return json({ jsonrpc: "2.0", id, result: { tools: [...cronTools()
-    }]}});
+    return json({ jsonrpc: "2.0", id, result: { tools: cronTools() }});
   }
   if (body.method === "tools/call") {
     const auth = await validAccess(request, env, url.origin);
