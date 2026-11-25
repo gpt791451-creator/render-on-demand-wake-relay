@@ -186,7 +186,21 @@ async function handleAuthorize(request, env, url) {
   redirect.searchParams.set("code", code);
   if (p.state) redirect.searchParams.set("state", p.state);
   redirect.searchParams.set("iss", url.origin);
-  return new Response(null, { status: 302, headers: { Location: redirect.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  // Some in-app browsers do not follow a POST 302 reliably. Show an explicit,
+  // one-tap continuation link to the validated ChatGPT callback as a fallback.
+  const callback = htmlEscape(redirect.toString());
+  const successPage = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Authorization successful</title><body style="font:16px system-ui;max-width:440px;margin:8vh auto;padding:24px;color:#222">' +
+    '<h2>Authorization successful</h2><p>Your Render Wake Relay access has been approved. Continue back to ChatGPT to finish connecting.</p>' +
+    '<p><a href="' + callback + '" style="display:inline-block;padding:12px 18px;background:#2563eb;color:white;border-radius:8px;text-decoration:none">Continue to ChatGPT</a></p>' +
+    '<p style="font-size:12px;color:#666">This link contains a short-lived, single-use authorization code.</p></body></html>';
+  return new Response(successPage, { status: 200, headers: {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer"
+  } });
 }
 function constantTimeEqual(a, b) {
   if (a.length !== b.length) return false;
