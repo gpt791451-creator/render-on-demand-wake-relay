@@ -383,7 +383,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request) });
-    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "render-on-demand-wake-relay", version: "1.2.0", features: ["cron_list_jobs", "cron_get_job", "cron_get_history", "ping"] }, 200, corsHeaders(request));
+    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "render-on-demand-wake-relay", version: "1.3.0", features: ["cron_list_jobs", "cron_get_job", "cron_get_history", "ping"] }, 200, corsHeaders(request));
     if (url.pathname === "/.well-known/oauth-protected-resource" && request.method === "GET") return json(resourceMetadata(url.origin), 200, corsHeaders(request));
     if (url.pathname === "/.well-known/oauth-authorization-server" && request.method === "GET") return json(oauthMetadata(url.origin), 200, corsHeaders(request));
     if (url.pathname === "/oauth/register") return request.method === "POST" ? handleRegister(request) : new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
