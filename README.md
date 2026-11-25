@@ -1,51 +1,30 @@
-# Cloudflare Cron MCP + Legacy Render Wake Relay
+# Cloudflare-hosted MCP Worker
 
-This Cloudflare Worker exposes a Streamable HTTP MCP endpoint at `/mcp`.
+This repository contains the Cloudflare Worker that serves the existing ChatGPT MCP connection.
 
-## Direct cron-job.org MCP tools
+- MCP endpoint: `/mcp` (Streamable HTTP)
+- Health endpoint: `/health`
+- OAuth metadata and authorization endpoints remain on this Worker.
+- Current MCP tools: `ping`, `cron_list_jobs`, `cron_get_job`, and `cron_get_history`.
 
-The Worker now provides these read-only tools:
+## Cloudflare-native migration branch
 
-- `ping` — reports Worker availability and whether `CRON_JOB_ORG_API_KEY` is configured. It does not consume cron-job.org API quota.
-- `cron_list_jobs` — calls `GET https://api.cron-job.org/jobs`.
-- `cron_get_job` — calls `GET /jobs/{jobId}`.
-- `cron_get_history` — calls `GET /jobs/{jobId}/history`.
+The `cloudflare-native-migration` branch removes the legacy Render wake-up path from the Worker source:
 
-The Worker only makes GET requests to the fixed `api.cron-job.org` host. It does not create, update, enable, disable, delete, or manually trigger jobs. cron-job.org's documented REST API does not expose a run-now endpoint.
+- The `wake_render` MCP tool and its long-polling implementation are removed.
+- The `RENDER_HEALTH_URL` Worker variable is removed.
+- The Worker no longer calls the Render service.
+- The existing public Worker name, URL, MCP route, OAuth routes, and OAuth secrets are preserved for compatibility.
+- The cron-job.org tools remain read-only during transition. They still require the existing `CRON_JOB_ORG_API_KEY` secret.
 
-The API key is read only from the Cloudflare Worker secret `CRON_JOB_ORG_API_KEY`; it is never returned by a tool or written to source control. The cron-job.org API has a default daily quota of 100 requests, so use list/detail/history calls only when needed.
+No Cloudflare Cron Trigger, KV, or D1 binding is added at this stage. The only recurring task documented in the legacy Render repository is a cron-job.org GET ping to Render's `/health` endpoint every 10 minutes. That keep-alive becomes unnecessary when Render is retired. A scheduled trigger must be added only if the live account inventory identifies a separate recurring workload that still needs to run.
 
-## Legacy Render compatibility
+See [docs/CLOUDFLARE_NATIVE_MIGRATION.md](docs/CLOUDFLARE_NATIVE_MIGRATION.md) for the source audit, architecture decision, validation gates, and rollback plan.
 
-The existing `wake_render` tool and OAuth endpoints remain available for rollback/compatibility. The direct cron-job.org tools do not depend on Render, Render health checks, or a Tunnel Client. The Render service and its configuration are not modified by this Worker.
+## Secrets and deployment safety
 
-## Authentication
-
-The Worker retains its OAuth 2.1 authorization-code flow with PKCE (S256), dynamic client registration, signed short-lived access tokens, and refresh tokens. It uses the existing Cloudflare secret `RELAY_ACCESS_TOKEN` as the private authorization password and HMAC signing key.
-
-- Protected-resource metadata: `/.well-known/oauth-protected-resource`
-- Authorization-server metadata: `/.well-known/oauth-authorization-server`
-- Dynamic client registration: `/oauth/register`
-- Authorization endpoint: `/oauth/authorize`
-- Token endpoint: `/oauth/token`
-- MCP endpoint: `/mcp`
-
-Do not share either secret in chat or put them in GitHub.
-
-## Cloudflare Workers setup
-
-1. Keep the existing Worker deployment and existing `RELAY_ACCESS_TOKEN` secret.
-2. In Worker **Settings → Variables and Secrets → Production**, add a **Secret** named `CRON_JOB_ORG_API_KEY` and paste the API key generated in cron-job.org Settings. Do not put it in `wrangler.toml`, source files, or chat.
-3. Deploy the updated `main` branch (if Git integration does not deploy automatically).
-4. Check `/health` and confirm it returns HTTP 200.
-5. Refresh the existing ChatGPT custom MCP connection for this Worker so its tool catalogue includes `ping`, `cron_list_jobs`, `cron_get_job`, and `cron_get_history`. The endpoint remains `https://render-on-demand-wake-relay.gpt791451.workers.dev/mcp`.
-6. Test `ping`, then `cron_list_jobs`. Do not call the legacy `wake_render` for normal cron-job.org access.
-
-## Safety and limits
-
-- Free-tier Cloudflare Worker; no scheduled trigger or keep-alive.
-- Direct outbound HTTPS to the official cron-job.org REST API only.
-- Read-only API methods only.
-- 15-second upstream request timeout.
-- API-key and upstream error details are not returned.
-- No secrets are stored in this repository.
+- Keep `RELAY_ACCESS_TOKEN` configured as a Cloudflare Worker secret. It is used by the existing OAuth authorization and token-signing flow.
+- Keep `CRON_JOB_ORG_API_KEY` configured until the live cron-job.org job inventory is reviewed and the external dependency is explicitly retired.
+- Never put secret values in source control, logs, URLs, or chat.
+- This branch is not production. Do not deploy or merge it until health, OAuth, MCP protocol, authenticated tool calls, and ChatGPT connector end-to-end tests pass.
+- Keep the current production Worker version and legacy Render service available for rollback until cutover acceptance.
