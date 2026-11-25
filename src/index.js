@@ -152,10 +152,10 @@ function loginPage(p, errorText = "") {
     '<input type="hidden" name="' + key + '" value="' + htmlEscape(value) + '">').join("");
   const error = errorText ? '<p role="alert" style="color:#b42318">' + htmlEscape(errorText) + "</p>" : "";
   const page = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>Authorize Render Wake Relay</title><body style="font:16px system-ui;max-width:440px;margin:8vh auto;padding:24px;color:#222">' +
-    '<h2>Connect Render Wake Relay</h2><p>Enter the private relay access password you created in Cloudflare to authorize ChatGPT to wake your Render service.</p>' +
+    '<title>Authorize Cloudflare MCP</title><body style="font:16px system-ui;max-width:440px;margin:8vh auto;padding:24px;color:#222">' +
+    '<h2>Connect Cloudflare MCP</h2><p>Enter the private Cloudflare access password to authorize ChatGPT to use the read-only cron-job.org tools exposed by this Worker.</p>' +
     error + '<form method="post" action="/oauth/authorize">' + hidden +
-    '<label for="password">Relay access password</label><br><input id="password" name="password" type="password" autocomplete="current-password" required style="box-sizing:border-box;width:100%;padding:12px;margin:10px 0 18px">' +
+    '<label for="password">Cloudflare access password</label><br><input id="password" name="password" type="password" autocomplete="current-password" required style="box-sizing:border-box;width:100%;padding:12px;margin:10px 0 18px">' +
     '<button type="submit" style="padding:12px 18px">Authorize</button></form>' +
     '<p style="font-size:12px;color:#666">The password is checked by this Worker and is never returned to ChatGPT.</p></body></html>';
   return new Response(page, { status: errorText ? 400 : 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" } });
@@ -191,7 +191,7 @@ async function handleAuthorize(request, env, url) {
   const callback = htmlEscape(redirect.toString());
   const successPage = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Authorization successful</title><body style="font:16px system-ui;max-width:440px;margin:8vh auto;padding:24px;color:#222">' +
-    '<h2>Authorization successful</h2><p>Your Render Wake Relay access has been approved. Continue back to ChatGPT to finish connecting.</p>' +
+    '<h2>Authorization successful</h2><p>Your Cloudflare MCP access has been approved. Continue back to ChatGPT to finish connecting.</p>' +
     '<p><a href="' + callback + '" style="display:inline-block;padding:12px 18px;background:#2563eb;color:white;border-radius:8px;text-decoration:none">Continue to ChatGPT</a></p>' +
     '<p style="font-size:12px;color:#666">This link contains a short-lived, single-use authorization code.</p></body></html>';
   return new Response(successPage, { status: 200, headers: {
