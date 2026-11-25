@@ -255,9 +255,11 @@ async function wakeRender(env) {
   if (!/^https:\/\/render-cron-mcp-poc\.onrender\.com\/health\/?$/.test(base)) {
     throw new Error("Render health URL is not the approved service endpoint.");
   }
+  // Render Free cold starts can exceed the former 55-second window.
+  // Keep polling bounded, with per-request timeouts and backoff.
   const started = Date.now();
-  const deadline = started + 55000;
-  let last = "not reached";
+  const deadline = started + 180000;
+  let last = "NO_RESPONSE";
   let attempt = 0;
   while (Date.now() < deadline) {
     attempt++;
@@ -265,24 +267,37 @@ async function wakeRender(env) {
       const response = await fetch(base, {
         method: "GET",
         headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(20000),
         redirect: "error"
       });
-      const body = await response.text();
       if (response.ok) {
-        let data;
-        try { data = JSON.parse(body); } catch { data = null; }
+        let data = null;
+        try { data = await response.json(); } catch { last = "INVALID_JSON"; }
         if (data && data.status === "ok" && data.service === "render-cron-mcp-poc" && data.mcpAccessConfigured === true) {
-          return { status: "ready", service: data.service, attempts: attempt, elapsedMs: Date.now() - started, checkedAt: new Date().toISOString(), nextStep: "Render health endpoint is responding. Call the separate Render Cron MCP connector to verify tunnel connectivity." };
+          return {
+            status: "ready",
+            service: data.service,
+            attempts: attempt,
+            elapsedMs: Date.now() - started,
+            checkedAt: new Date().toISOString(),
+            nextStep: "Render health endpoint is responding. Call the separate Render Cron MCP connector to verify tunnel connectivity."
+          };
         }
-        last = "health endpoint responded but readiness payload did not match";
-      } else last = "HTTP " + response.status;
+        if (data) last = "READINESS_PAYLOAD_MISMATCH";
+      } else {
+        last = "UPSTREAM_HTTP_" + response.status;
+        // Do not read or return upstream response bodies.
+        try { await response.body?.cancel(); } catch {}
+      }
     } catch (error) {
-      last = error && error.name === "TimeoutError" ? "health request timed out" : "service is waking or temporarily unreachable";
+      last = error && error.name === "TimeoutError" ? "UPSTREAM_TIMEOUT" : "UPSTREAM_NETWORK_ERROR";
     }
-    await new Promise(resolve => setTimeout(resolve, 2500));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const delay = Math.min(8000, 2000 + attempt * 1000, remaining);
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
-  throw new Error("Render did not become ready within 55 seconds (" + last + "). Retry the wake tool once; do not expose upstream details.");
+  throw new Error("Render not ready after 180 seconds; diagnostic=" + last + "; attempts=" + attempt + ". Retry once later; do not expose upstream details.");
 }
 async function handleRpc(request, env, url) {
   let body;
