@@ -250,6 +250,88 @@ async function validAccess(request, env, origin) {
   if (!token || token.typ !== "access" || token.iss !== origin || token.aud !== origin || !token.scope?.split(/\s+/).includes(SCOPE)) return null;
   return token;
 }
+
+async function cronApiRequest(env, path) {
+  const apiKey = (env.CRON_JOB_ORG_API_KEY || "").trim();
+  if (!apiKey) throw new Error("CRON_API_KEY_NOT_CONFIGURED");
+  if (!/^\\/(jobs(?:\\/\\d+(?:\\/history)?)?)$/.test(path)) throw new Error("INVALID_API_PATH");
+  const response = await fetch("https://api.cron-job.org" + path, {
+    method: "GET",
+    headers: { "Authorization": "Bearer " + apiKey, "Accept": "application/json" },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (response.status === 401 || response.status === 403) {
+    try { await response.body?.cancel(); } catch {}
+    throw new Error("CRON_API_AUTH_FAILED");
+  }
+  if (response.status === 429) {
+    try { await response.body?.cancel(); } catch {}
+    throw new Error("CRON_API_RATE_LIMITED");
+  }
+  if (!response.ok) {
+    const status = response.status;
+    try { await response.body?.cancel(); } catch {}
+    throw new Error("CRON_API_HTTP_" + status);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    try { await response.body?.cancel(); } catch {}
+    throw new Error("CRON_API_INVALID_CONTENT_TYPE");
+  }
+  return await response.json();
+}
+function validJobId(value) {
+  return Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+}
+function cronTools() {
+  return [
+    {
+      name: "ping",
+      description: "Check whether this Cloudflare-hosted cron-job.org MCP server is online and whether its API secret is configured. Does not consume cron-job.org API quota.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
+    },
+    {
+      name: "cron_list_jobs",
+      description: "List cron jobs in the connected cron-job.org account. Read-only; does not create, update, enable, disable, or delete jobs.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
+    },
+    {
+      name: "cron_get_job",
+      description: "Get details for one cron-job.org job by numeric job_id. Read-only.",
+      inputSchema: { type: "object", properties: { job_id: { type: "integer", minimum: 1 } }, required: ["job_id"], additionalProperties: false },
+      securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
+    },
+    {
+      name: "cron_get_history",
+      description: "Get execution history and upcoming predictions for one cron-job.org job by numeric job_id. Read-only.",
+      inputSchema: { type: "object", properties: { job_id: { type: "integer", minimum: 1 } }, required: ["job_id"], additionalProperties: false },
+      securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
+    }
+  ];
+}
+async function callCronTool(name, args, env) {
+  if (name === "ping") {
+    return {
+      status: "ok",
+      service: "cloudflare-cron-job-org-mcp",
+      cronApiConfigured: Boolean((env.CRON_JOB_ORG_API_KEY || "").trim()),
+      mode: "read-only"
+    };
+  }
+  if (name === "cron_list_jobs") return await cronApiRequest(env, "/jobs");
+  if (name === "cron_get_job") {
+    if (!validJobId(args?.job_id)) throw new Error("INVALID_JOB_ID");
+    return await cronApiRequest(env, "/jobs/" + args.job_id);
+  }
+  if (name === "cron_get_history") {
+    if (!validJobId(args?.job_id)) throw new Error("INVALID_JOB_ID");
+    return await cronApiRequest(env, "/jobs/" + args.job_id + "/history");
+  }
+  throw new Error("UNKNOWN_TOOL");
+}
+
 async function wakeRender(env) {
   const base = (env.RENDER_HEALTH_URL || "").trim();
   if (!/^https:\/\/render-cron-mcp-poc\.onrender\.com\/health\/?$/.test(base)) {
@@ -306,15 +388,15 @@ async function handleRpc(request, env, url) {
     return json({ jsonrpc: "2.0", id, result: {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      serverInfo: { name: "render-on-demand-wake-relay", version: "1.1.0" },
-      instructions: "Authorize this MCP server using OAuth. Call wake_render before calling the separate Render Cron MCP connector. This tool only wakes and verifies Render; it does not read or change cron jobs."
+      serverInfo: { name: "cloudflare-cron-job-org-mcp", version: "1.2.0" },
+      instructions: "This Cloudflare-hosted MCP server provides read-only access to cron-job.org jobs and execution history. Use ping to check configuration, cron_list_jobs to list jobs, cron_get_job for job details, and cron_get_history for execution history. It does not create, update, enable, disable, delete, or manually trigger jobs. The legacy wake_render tool remains available only for compatibility."
     }});
   }
   if (body.method === "ping") return json({ jsonrpc: "2.0", id, result: {} });
   if (body.method === "tools/list") {
-    return json({ jsonrpc: "2.0", id, result: { tools: [{
+    return json({ jsonrpc: "2.0", id, result: { tools: [...cronTools(), {
       name: "wake_render",
-      description: "Wake the approved Render Free service and wait for its health endpoint to report ready. Requires OAuth authorization. Call before using the separate Render Cron MCP connector after idle time. Does not modify jobs, schedules, deployments, or secrets.",
+      description: "Legacy compatibility tool only: attempt to wake the old Render Free service. The new cron-job.org tools do not depend on Render.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       securitySchemes: [{ type: "oauth2", scopes: [SCOPE] }]
     }]}});
@@ -329,12 +411,21 @@ async function handleRpc(request, env, url) {
       });
     }
     const params = body.params || {};
-    if (params.name !== "wake_render") return json({ jsonrpc: "2.0", id, error: { code: -32602, message: "Unknown tool" } });
+    const name = params.name;
     try {
-      const result = await wakeRender(env);
+      const result = name === "wake_render"
+        ? await wakeRender(env)
+        : await callCronTool(name, params.arguments || {}, env);
       return json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: false }});
     } catch (error) {
-      const result = { status: "not_ready", message: error.message };
+      const message = String(error?.message || "TOOL_FAILED");
+      const result = { status: "error", code: message, message:
+        message === "CRON_API_KEY_NOT_CONFIGURED" ? "Cloudflare secret CRON_JOB_ORG_API_KEY is not configured."
+        : message === "CRON_API_AUTH_FAILED" ? "cron-job.org rejected the API key. Verify the secret in Cloudflare."
+        : message === "CRON_API_RATE_LIMITED" ? "cron-job.org API quota or rate limit was reached."
+        : message === "INVALID_JOB_ID" ? "job_id must be a positive integer."
+        : message.startsWith("CRON_API_HTTP_") ? "cron-job.org API returned HTTP " + message.slice("CRON_API_HTTP_".length) + "."
+        : "The requested MCP tool could not complete." };
       return json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result, isError: true }});
     }
   }
