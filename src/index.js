@@ -254,7 +254,7 @@ async function validAccess(request, env, origin) {
 async function cronApiRequest(env, path) {
   const apiKey = (env.CRON_JOB_ORG_API_KEY || "").trim();
   if (!apiKey) throw new Error("CRON_API_KEY_NOT_CONFIGURED");
-  if (!/^\\/(jobs(?:\\/\\d+(?:\\/history)?)?)$/.test(path)) throw new Error("INVALID_API_PATH");
+  if (!/^\/(jobs(?:\/\d+(?:\/history)?)?)$/.test(path)) throw new Error("INVALID_API_PATH");
   const response = await fetch("https://api.cron-job.org" + path, {
     method: "GET",
     headers: { "Authorization": "Bearer " + apiKey, "Accept": "application/json" },
