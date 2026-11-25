@@ -2,6 +2,3 @@ name = "render-on-demand-wake-relay"
 main = "src/index.js"
 compatibility_date = "2026-11-25"
 workers_dev = true
-
-[vars]
-RENDER_HEALTH_URL = "https://render-cron-mcp-poc.onrender.com/health"
