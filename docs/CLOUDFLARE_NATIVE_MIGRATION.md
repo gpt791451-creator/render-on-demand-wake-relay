@@ -122,3 +122,16 @@ The Render app logs now provide a stronger explanation for the stale tunnel symp
 - This is a possible correction if the Render tunnel is intentionally retained. It is not being applied because the migration objective is to remove Render from the runtime path, and no Render service configuration change is authorized in this phase.
 
 The next priority remains Cloudflare live verification and a safe way to read the actual cron-job.org inventory. Do not infer that there are no cron jobs from missing logs, and do not delete or disable any job until its live details have been reviewed.
+
+
+### GitHub Actions smoke-test failure and repair (2026-11-26)
+
+The existing draft/working migration PR is PR #1 (`cloudflare-native-migration` -> `main`); it was already open before this continuation. Its head initially ran GitHub Actions workflow run #11 (`45678409561`), which failed all nine tests for one common harness setup error: `loadWorker()` searched for `export default {` only at the beginning of `src/index.js` using the anchored regular expression `/^export default\\s*\\{/`, while the export is at the end of the module. The Worker source itself was not the cause of those nine failures.
+
+The test harness was corrected to locate the export anywhere in the source using `/export default\\s*\\{/`. The repair is commit `9092e9f11f46a09d8332ce0725ed3dbcddce78d3` on the migration branch. GitHub Actions run #13 (`45678810131`) completed successfully on the PR merge ref: all nine tests passed, zero failed. The job steps (checkout, Node 22 setup, smoke tests, cleanup) all completed successfully. This is independent GitHub-hosted CI evidence for the branch-local mocked Worker tests, not a Cloudflare deployment, real cron-job.org request, live OAuth exchange, or ChatGPT E2E validation.
+
+### Cloudflare preview build status and access limitation (2026-11-26)
+
+The already-open PR #1 contains a Cloudflare Workers & Pages bot comment for an earlier Preview build at commit `63b8e23`; that build is marked Failed and no Preview URL was produced. The comment links to the Cloudflare dashboard build record `2dc10dec-5bf2-44f5-abfc-b4f38ae9c81a`. The current GitHub connector can read the PR comment but cannot read the Cloudflare dashboard build logs. A direct Web open of the Cloudflare dashboard record and the deployed Worker's `/health` endpoint are not accessible from this session (DisabledError). A SAFE Shell `curl` request was also rejected by the host's SAFE allowlist; Full Shell was not enabled.
+
+Cloudflare's current documentation says production-branch pushes create production builds, while non-production branches create Previews only when Preview Builds are enabled. The existing PR bot comment proves a Preview build was attempted for this branch, not that production was changed. Do not merge PR #1 or alter the production branch until the failed Preview build is diagnosed and the live Worker/OAuth/connector checks pass. The CI repair commit changed only `tests/worker-smoke.test.mjs`; it did not change Worker runtime source.
