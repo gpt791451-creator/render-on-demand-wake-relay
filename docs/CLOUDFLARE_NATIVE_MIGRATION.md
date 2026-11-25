@@ -91,7 +91,7 @@ A local V8/Fetch-compatible harness exercised the migration branch source withou
 
 These are branch-local handler smoke checks with a compatibility harness, not a Cloudflare deployment, real OAuth exchange, upstream cron API call, or ChatGPT connector E2E test.
 
-A Node 22 GitHub Actions smoke-test workflow and seven tests were added to this branch. The GitHub Actions runs endpoint currently reports zero runs for the branch, so CI has not yet supplied an independent pass/fail result.
+A Node 22 GitHub Actions smoke-test workflow and nine tests were added to this branch. The suite also mocks OAuth authorization and the upstream fetch in isolation to verify all three cron inspection calls remain fixed-host GET-only, invalid job IDs fail before any upstream request, and the API key is not returned in tool responses. The GitHub Actions runs endpoint currently reports zero runs for the branch, so CI has not yet supplied an independent pass/fail result.
 
 ### Live Render/cron inventory attempt
 
