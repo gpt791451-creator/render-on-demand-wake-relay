@@ -23,11 +23,15 @@ permissions:
 jobs:
   worker-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run Worker runtime smoke tests
+      - name: Run isolated Worker runtime smoke tests
         run: node --test tests/worker-smoke.test.mjs
+      - name: Run live Cloudflare Preview smoke tests
+        env:
+          PREVIEW_BASE_URL: https://cloudflare-native-migration-render-on-demand-wake-relay.gpt791451.workers.dev
+        run: node --test tests/preview-live.test.mjs
