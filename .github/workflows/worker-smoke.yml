@@ -5,6 +5,7 @@ on:
     branches: [cloudflare-native-migration]
     paths:
       - "src/index.js"
+      - "wrangler.toml"
       - "tests/**"
       - ".github/workflows/worker-smoke.yml"
   pull_request:
