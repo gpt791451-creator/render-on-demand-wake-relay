@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "../src/index.js"), "utf8");
+const wranglerConfig = readFileSync(resolve(here, "../wrangler.toml"), "utf8");
 
 function loadWorker({ authorize = false, fetchImpl = async () => {
   throw new Error("Unexpected outbound fetch in this test");
@@ -25,6 +26,12 @@ function loadWorker({ authorize = false, fetchImpl = async () => {
 }
 
 const origin = "https://worker-smoke.test";
+
+test("Wrangler config includes an explicit Preview block", () => {
+  assert.match(wranglerConfig, /^name = "render-on-demand-wake-relay"$/m);
+  assert.match(wranglerConfig, /^main = "src\\/index\\.js"$/m);
+  assert.match(wranglerConfig, /^previews = \\{\\}$/m);
+});
 
 async function request(worker, path, { method = "GET", body, headers = {}, env = {} } = {}) {
   return worker.fetch(new Request(origin + path, {
