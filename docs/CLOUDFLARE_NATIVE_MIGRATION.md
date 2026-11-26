@@ -155,3 +155,26 @@ Latest source/test commits:
 GitHub Actions run #20 (`45682075767`) completed successfully on Node 22: **13 tests passed, 0 failed**. This validates the Worker handler and OAuth implementation in the isolated Node test harness with test-only secrets. It is not a live Cloudflare Worker execution or ChatGPT connector end-to-end test.
 
 The existing PR #1 is still open and the branch is 19 commits ahead of `main` with no commits behind. The only Cloudflare bot preview comment currently visible through GitHub still reports the earlier preview build for `63b8e23` as failed with no Preview URL; no successful Preview for the latest head has been evidenced. Do not merge until the Cloudflare build failure is diagnosed and live Worker/connector verification is complete.
+
+
+
+### Cloudflare Preview build root cause and correction (2026-11-26)
+
+The Cloudflare Workers Build Logs supplied for the failed Preview of commit `94b7111` identify the exact failure:
+
+```
+Executing user deploy command: npx wrangler preview
+Wrangler 4.168.0
+[ERROR] Your Wrangler configuration is missing a `previews` block to run this command.
+```
+
+This was a configuration omission, not a JavaScript, OAuth, or GitHub Actions test failure. The migration branch's `wrangler.toml` had top-level Worker settings only. Cloudflare's Worker Previews documentation explicitly requires a `previews` block and permits an empty block when no Preview-specific variables or bindings are needed.
+
+Correction on `cloudflare-native-migration` only:
+- Added `previews = {}` to `wrangler.toml`.
+- Added a Node smoke test asserting the Worker name, entry point, and explicit empty Preview block.
+- Updated GitHub Actions path filters so a `wrangler.toml` change runs the smoke suite.
+- The Preview is not given production secrets or production bindings by this change. Do not copy `RELAY_ACCESS_TOKEN` or `CRON_JOB_ORG_API_KEY` into Preview configuration. Preview runtime authentication/upstream tools remain unverified until an isolated test-secret setup is explicitly approved.
+- No production deployment, main-branch change, secret access, Render change, or cron-job mutation was performed.
+
+The next evidence gate is a successful Cloudflare Preview build for the latest migration-branch commit, followed by non-production Preview health/OAuth/MCP checks. A successful Preview build alone is not production cutover acceptance.
