@@ -29,8 +29,8 @@ const origin = "https://worker-smoke.test";
 
 test("Wrangler config includes an explicit Preview block", () => {
   assert.match(wranglerConfig, /^name = "render-on-demand-wake-relay"$/m);
-  assert.match(wranglerConfig, /^main = "src\\/index\\.js"$/m);
-  assert.match(wranglerConfig, /^previews = \\{\\}$/m);
+  assert.ok(wranglerConfig.includes('main = "src/index.js"'));
+  assert.ok(wranglerConfig.includes("previews = {}"));
 });
 
 async function request(worker, path, { method = "GET", body, headers = {}, env = {} } = {}) {
