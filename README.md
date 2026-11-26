@@ -14,17 +14,19 @@ The `cloudflare-native-migration` branch removes the legacy Render wake-up path 
 - The `wake_render` MCP tool and its long-polling implementation are removed.
 - The `RENDER_HEALTH_URL` Worker variable is removed.
 - The Worker no longer calls the Render service.
-- The existing public Worker name, URL, MCP route, OAuth routes, and OAuth secrets are preserved for compatibility.
-- The cron-job.org tools remain read-only during transition. They still require the existing `CRON_JOB_ORG_API_KEY` secret.
+- The existing public Worker name, URL, MCP route, and OAuth routes are preserved for compatibility.
+- The cron-job.org tools remain read-only during transition. They still require `CRON_JOB_ORG_API_KEY` for upstream calls.
 
-No Cloudflare Cron Trigger, KV, or D1 binding is added at this stage. The only recurring task documented in the legacy Render repository is a cron-job.org GET ping to Render's `/health` endpoint every 10 minutes. That keep-alive becomes unnecessary when Render is retired. A scheduled trigger must be added only if the live account inventory identifies a separate recurring workload that still needs to run.
+No Cloudflare Cron Trigger, KV, or D1 binding is added at this stage. The only recurring task documented in the source audit is a cron-job.org GET ping to the legacy `/health` endpoint every 10 minutes. That keep-alive becomes unnecessary when the legacy service is retired. A scheduled trigger must be added only if the live account inventory identifies a separate recurring workload.
 
 See [docs/CLOUDFLARE_NATIVE_MIGRATION.md](docs/CLOUDFLARE_NATIVE_MIGRATION.md) for the source audit, architecture decision, validation gates, and rollback plan.
 
+See [docs/PREVIEW_AUTHENTICATION_RUNBOOK.md](docs/PREVIEW_AUTHENTICATION_RUNBOOK.md) for the verified Preview-only secret command and the remaining live OAuth/ChatGPT acceptance steps.
+
 ## Secrets and deployment safety
 
-- Keep `RELAY_ACCESS_TOKEN` configured as a Cloudflare Worker secret. It is used by the existing OAuth authorization and token-signing flow.
-- Keep `CRON_JOB_ORG_API_KEY` configured until the live cron-job.org job inventory is reviewed and the external dependency is explicitly retired.
+- Production `RELAY_ACCESS_TOKEN` remains a Cloudflare Worker secret and is not copied to Preview.
+- Production `CRON_JOB_ORG_API_KEY` remains untouched until the live cron-job.org inventory is reviewed and the external dependency is explicitly retired.
 - Never put secret values in source control, logs, URLs, or chat.
-- This branch is not production. Do not deploy or merge it until health, OAuth, MCP protocol, authenticated tool calls, and ChatGPT connector end-to-end tests pass.
-- Keep the current production Worker version and legacy Render service available for rollback until cutover acceptance.
+- This branch is not production. Do not merge or deploy it until health, OAuth, MCP protocol, authenticated tool calls, and ChatGPT connector end-to-end tests pass.
+- Keep the existing Production deployment and rollback path available until cutover acceptance.
