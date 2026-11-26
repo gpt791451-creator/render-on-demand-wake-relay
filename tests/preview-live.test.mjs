@@ -5,8 +5,8 @@ const base = process.env.PREVIEW_BASE_URL;
 assert.ok(base, "PREVIEW_BASE_URL must be configured");
 const preview = new URL(base);
 assert.equal(preview.protocol, "https:");
-assert.match(preview.hostname, /^cloudflare-native-migration-render-on-demand-wake-relay\\.gpt791451\\.workers\\.dev$/);
-assert.doesNotMatch(preview.hostname, /^render-on-demand-wake-relay\\.gpt791451\\.workers\\.dev$/);
+assert.match(preview.hostname, /^cloudflare-native-migration-render-on-demand-wake-relay\.gpt791451\.workers\.dev$/);
+assert.doesNotMatch(preview.hostname, /^render-on-demand-wake-relay\.gpt791451\.workers\.dev$/);
 
 let readyPromise;
 async function waitForPreview() {
